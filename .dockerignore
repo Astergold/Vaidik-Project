@@ -1,0 +1,8 @@
+node_modules
+**/node_modules
+.turbo
+**/coverage
+.env
+.env.*
+Env.txt
+.git
