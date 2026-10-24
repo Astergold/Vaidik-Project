@@ -1,0 +1,22 @@
+staging.laveric.com, app.laveric.com {
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Route API traffic to Fastify backend
+    handle /api/* {
+        reverse_proxy crm-api:3001
+    }
+    
+    handle /v1/* {
+        reverse_proxy crm-api:3001
+    }
+
+    # Route everything else to TanStack UI
+    handle {
+        reverse_proxy crm-web:3000
+    }
+}

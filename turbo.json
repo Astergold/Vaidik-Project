@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "agentGuidance": false,
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "test": {
+      "cache": false,
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "DATABASE_MIGRATION_URL",
+        "BETTER_AUTH_SECRET",
+        "MASTER_KEY",
+        "MASTER_KEY_VERSION",
+        "PUBLIC_BASE_URL",
+        "NODE_ENV"
+      ]
+    }
+  }
+}

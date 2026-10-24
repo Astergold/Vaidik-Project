@@ -1,0 +1,36 @@
+{
+  "name": "@vernacular/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/generated/db.d.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:up": "docker compose -f dev/docker-compose.yml up -d --wait",
+    "db:migrate": "dotenv -e ../../.env -- dbmate -e DATABASE_MIGRATION_URL -d migrations --migrations-table crm.schema_migrations --no-dump-schema up",
+    "db:rollback": "dotenv -e ../../.env -- dbmate -e DATABASE_MIGRATION_URL -d migrations --migrations-table crm.schema_migrations --no-dump-schema rollback",
+    "db:new": "dbmate -d migrations --migrations-table crm.schema_migrations new",
+    "db:codegen": "dotenv -e ../../.env -- sh -c 'kysely-codegen --url \"$DATABASE_MIGRATION_URL\" --dialect postgres --default-schema crm --include-pattern \"crm.*\" --exclude-pattern crm.schema_migrations --out-file src/generated/db.d.ts --type-only-imports'",
+    "db:reset": "dotenv -e ../../.env -- dbmate -e DATABASE_MIGRATION_URL -d migrations --migrations-table crm.schema_migrations --no-dump-schema drop && dotenv -e ../../.env -- dbmate -e DATABASE_MIGRATION_URL -d migrations --migrations-table crm.schema_migrations --no-dump-schema up",
+    "db:roundtrip": "dotenv -e ../../.env -- bash ../../scripts/migration-roundtrip.sh"
+  },
+  "dependencies": {
+    "kysely": "^0.29.6",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@vernacular/contracts": "workspace:^",
+    "dbmate": "^2.26.0",
+    "dotenv": "^16.4.7",
+    "dotenv-cli": "^11.0.0",
+    "kysely-codegen": "^0.20.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

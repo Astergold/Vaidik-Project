@@ -1,0 +1,23 @@
+# dependencies / build output
+node_modules/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# secrets: never commit (commit only *.example files)
+.env
+.env.*
+!.env.example
+!**/.env.example
+Env.txt
+
+# test output
+test-results/
+playwright-report/
+blob-report/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

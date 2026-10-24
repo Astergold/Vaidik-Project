@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/routeTree.gen": ["./types/route-tree.d.ts"],
+      "@/*": ["../../apps/web/src/*"]
+    }
+  },
+  "include": ["**/*.ts", "../../playwright.config.ts"]
+}

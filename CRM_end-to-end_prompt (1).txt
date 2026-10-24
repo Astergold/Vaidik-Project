@@ -1,0 +1,256 @@
+ROLE
+You are a senior full-stack engineer finishing the wiring AND deployment readiness of this repo. Work
+autonomously through all phases in order. Do not ask questions unless you hit a true blocker (end of
+prompt). THIS PROMPT SUPERSEDES ALL EARLIER INSTRUCTIONS. In particular: do NOT add new pipeline stages;
+if you already created a migration adding form_sent / fee_pending / callback_scheduled /
+counsellor_assigned / info_sent, remove it (down-migrate if applied, then delete the file) before continuing.
+
+SPEC AUTHORITY
+- Read AGENTS.md and docs/HANDBOOK.md first. HANDBOOK is the design spec: §2 locked decisions, §4 architecture
+  and flows, §6 data model, §7 business rules, §9.1 NEVER list, §11 testing, Appendix A/B/C/D.
+- Design questions: the handbook wins. "What exists today": the repo wins. Record every conflict and your
+  resolution in docs/WIRING_PROGRESS.md. The NEVER list in AGENTS.md is absolute; in particular: never show
+  "Dograh"/"GODRAH" to tenants (UI, API responses, emails, tenant-visible logs); never call an LLM inside an
+  HTTP handler; never dial/message without the policy engine; never touch Postgres/R2/providers from
+  crm-web; never edit applied migrations or generated types by hand; never disable a failing test.
+
+GOAL
+One fully connected, deployable product with no stubs, delivering this flow:
+ 1. A campaign is built from a selected number of leads in waves of 100 or 200.
+ 2. Initial AI calls are dialled for that wave through the policy engine.
+ 3. Each call is classified into a scenario.
+ 4. After classification, leads are assigned to counsellors by lead status/scenario.
+ 5. The lead continues through the follow-up flow (callbacks, counsellor work, stage progression).
+ 6. The CRM and the voice provider reflect each other's changes in real time (new campaigns, call status,
+    lead status).
+ 7. The whole stack deploys with Docker Compose + Caddy over HTTPS and works on any device (phone, tablet,
+    desktop) from a browser.
+
+KNOWN STATE (from audit; verify, don't assume)
+Fastify API, Kysely/Postgres (schema crm, RLS), pg-boss, Better Auth, TanStack Start web, packages
+contracts/policy/integrations. Defects: campaigns/routes.ts are hardcoded stubs; campaigns/jobs.ts is a
+placeholder and unregistered; analysis.ready maps next_step to non-existent stages (CHECK violation);
+worker uses UnconfiguredDialer outside DIAL_MODE=fake; webhook signature check scans every tenant;
+recording download is a TODO (webhooks.ts:307); no counsellor auto-assignment; no campaign UI routes; only
+polling for real-time; allJobs has only systemPing, dialJob, syncRunsJob (so call.finalize, recording.archive,
+analyst.run and others may be missing); agent-tools module status unknown.
+
+DESIGN DECISIONS
+- Source of truth: our DB owns campaigns, leads, stages, assignments. The provider owns call execution and
+  artifacts. The provider's own campaign feature is NOT used; a campaign is a CRM object that enqueues
+  call.dial per lead in waves (D3-I3-04). Progress is derived from call_attempt counts.
+- Wave size: campaign.batch_size in {100, 200}, default 100, per campaign. crm.campaign_lead may snapshot
+  membership (wave_no, status, skip_reason) so membership is stable; call_attempt.campaign_id remains the link
+  used for progress. A lead belongs to at most one active campaign.
+- Pipeline (HANDBOOK §7.1): stages are FIXED: new, attempting, connected, interested, visit_booked, visited,
+  applied, fee_paid, enrolled, lost, invalid. next_step (book_visit, fill_form, pay_fee, callback,
+  counsellor_call, send_info, none) lives in lead.next_step + lead.next_step_due_at, NOT in stage. Stage moves:
+  attempting when the first dial is reserved; connected when talk >15s; interested when temperature is
+  Hot/Warm; visit_booked/visited from campus_visit status; applied/fee_paid/enrolled from application status;
+  lost/invalid via counsellor or policy. moveStage keeps its rules (auto forward-only, never out of
+  lost/invalid; manual needs a reason). Every move writes lead_stage_history.
+- Scenario = derived label (pure, exhaustively tested function) from disposition + temperature + next_step +
+  needs_counsellor: interested_visit, wants_form, ready_to_pay, callback_requested, needs_counsellor,
+  send_info, not_interested, no_answer, invalid_number. Persist it in a nullable column on call_attempt for
+  grouping/reporting. Unknown inputs never throw: no stage move, audit row, warning log.
+- Classification source: analyst.run (CRM-side, LLM adapter, generateObject with zod from
+  packages/contracts/analysis.ts, verbatim quotes validated as exact substrings after whitespace collapse,
+  DB trigger as final guard, retry once, runs only when talk >= 15s). If the repo currently consumes a provider
+  analysis.ready event, keep it only as an input that goes through the same validation and write path; it must
+  not bypass quote validation or write stages directly.
+- Assignment (HANDBOOK D4-I2-05 / Flow D): eligible pool = counsellors allocated to the lead's ai_agent via
+  ai_agent_counsellor (fallback: active counsellors in the tenant if none allocated). Rule per tenant
+  (tenant_policy.assignment_rule): round_robin (default), by_program, by_language. Skip counsellors at capacity
+  (tenant_policy.counsellor_capacity, default 25 open items; add these columns, no new settings table). Applied on
+  lead create AND on needs_counsellor queue items; sets lead.owner_counsellor_id / queue assignee_id. If nobody is
+  eligible, leave unassigned and notify the admission head. Race-safe (FOR UPDATE SKIP LOCKED). Manual
+  claim/release/reassign remain. Counsellors only see "own" leads (HANDBOOK §7.5).
+- Policy engine results on dial (HANDBOOK §7.3): OUTSIDE_WINDOW / TOO_SOON -> reschedule at retryAt;
+  CALL_IN_PROGRESS -> exit cleanly; SUPPRESSED / NDNC_LISTED / NO_CONSENT / CAP_REACHED / TENANT_SUSPENDED -> the
+  lead is skipped in the campaign with that typed reason, shown on Lead 360; WALLET_EMPTY -> pause the campaign
+  and notify. Campaign start applies static filters only (leadFilter, not in another active campaign,
+  deduplicated); the policy engine re-checks every dial.
+- Roles: campaigns create/start/stop = super-admin, owner/admin, admission head. Counsellors never run campaigns.
+- Real-time: polling first (exists). SSE is the last optional feature phase, an addition beyond the handbook.
+- Recordings: job recording.archive -> packages/integrations/storage (R2), key tenants/<tenant_id>/... per
+  HANDBOOK; private, signed URLs; every playback writes recording_access_log.
+- Workflow selection: dropdown via GET /agents/workflows (adapter listWorkflows exists in the handbook design;
+  verify), fallback to free-text UUID with format validation.
+- Env: use DOGRAH_BASE_URL and DOGRAH_PLATFORM_KEY (Appendix D). Keep GODRAH_API_BASE_URL / GODRAH_API_KEY as
+  deprecated aliases that log a warning. Tenant keys live encrypted in crm.tenant_secret; a global key is a
+  dev/staging fallback only and production must not depend on it.
+
+WORKING RULES
+- Branch feat/wire-voice-flow. Conventional Commits, one commit per phase (split further if a diff is huge).
+- Maintain docs/WIRING_PROGRESS.md (done, files, decisions, deviations, conflicts, next phase) so work can resume.
+  Update docs/specs/<module>.md for each module you change.
+- Every phase leaves pnpm typecheck && pnpm lint && pnpm test green; start Postgres with pnpm db:up so DB/API
+  tests really run. Add a tenant-isolation test for every new tenant table and endpoint.
+- Migrations: new dbmate .sql files with BOTH up and down, schema crm only, uuidv7 ids, tenant_id + RLS using
+  current_setting('app.tenant_id')::uuid, updated_at triggers, no UPDATE/DELETE grants on append-only tables
+  (audit_log, lead_stage_history, usage_event, observations). pnpm db:codegen after each. Contracts first, then
+  API, then web.
+- Do not invent provider endpoints/fields; verify against packages/integrations/dograh types and fixtures. If
+  unverifiable, keep behaviour local and note it as a limitation.
+- No stubs, hardcoded demo data, TODOs or placeholders in anything you touch. Never commit secrets or real
+  phone numbers (mask in fixtures).
+
+PHASE 0 - Baseline, conformance, foundations
+a) Run the full setup, record baseline results, fix the 3 flaky web tests (mock scrollTo in jsdom).
+b) Conformance check against docs/HANDBOOK.md: for each item list present/partial/missing in
+   WIRING_PROGRESS.md: lead.next_step + next_step_due_at, ai_agent_counsellor, call_attempt partial unique index
+   (one active call per lead), dograh_run_raw, usage_event, counsellor_queue_item, notification, the jobs
+   call.finalize / recording.archive / analyst.run / sla.check, the 12 agent tools, /health,
+   /api/internal/domain-allowed, /api/admin/sync-health. Implement anything the flow below depends on that is
+   missing; do not build unrelated handbook modules.
+c) Migrations: campaign.batch_size; crm.campaign_lead (tenant_id, campaign_id, lead_id, wave_no, status
+   [pending|dialing|done|skipped|failed], skip_reason, call_attempt_id, UNIQUE(campaign_id, lead_id));
+   crm.webhook_event_processed (tenant_id, dograh_run_id, event, provider_event_id, processed_at, unique);
+   tenant_policy.counsellor_capacity and assignment_rule; call_attempt.scenario; partial unique index so
+   usage_event(kind='call_minute') is one per call_attempt.
+d) Add scripts/send-fake-webhook.ts (pnpm dev:webhook): signed payloads for call.started, call.ended,
+   transcript.ready, recording.ready, analysis.ready (if used); flags --scenario <name> (full sequence),
+   --out-of-order, --duplicate. It must use the same signing and URL shape as production.
+
+PHASE 1 - Pipeline and next_step correctness (replaces any stage migration)
+Fix the next_step handling in the call-processing path: set lead.next_step + next_step_due_at per the Design
+Decisions, never write a stage outside the fixed set, and apply stage moves only by the §7.1 rules. Keep the
+next_step -> (next_step, due date, queue item) mapping in one pure, exhaustively tested function with a safe
+fallback. Update UI labels for next_step values.
+Acceptance: tests for every next_step value including unknown; integration test fires each scenario and the
+lead ends with the right stage/next_step/queue state and no DB error; a CHECK-violation regression test.
+
+PHASE 2 - Real dialer and adapter
+Replace UnconfiguredDialer in production with the real adapter dialer using the per-tenant key resolved just in
+time. DIAL_MODE=fake only for dev/tests; production fails fast at boot with a clear message if no dialer can be
+built. Send initial_context (lead_id, name, program, language) and an idempotency key per the adapter/spec. Stop
+call and listWorkflows: add only if the spec/fixtures support them; otherwise local cancel only and note it.
+Acceptance: worker integration test with the provider mocked at the HTTP boundary asserts the request shape;
+keys never appear in logs.
+
+PHASE 3 - Campaign CRUD
+Replace all stubs in campaigns/routes.ts with routes/service/repo layers matching packages/contracts campaigns
+(add batch_size first): list (paginated), get, create, patch (draft/paused only), start/pause/resume/stop with a
+validated state machine, GET /campaigns/:id/progress from call_attempt (+campaign_lead) counts, real ai_agent
+join, created_by from session, role checks per Design Decisions, audit rows. Extract the lead-filter query into
+one shared function used by /api/leads, the match-count preview and campaign.start so preview and wave never
+diverge. Web already calls GET /api/leads for matchCount: do not add a new endpoint.
+Acceptance: API tests for every route; invalid transitions 409/422; counsellor gets 403; cross-tenant 404/403
+(add to the cross-tenant suite).
+
+PHASE 4 - Campaign start and wave dispatch
+Implement and REGISTER campaign.start (jobs/index.ts allJobs + pnpm jobs:install). It snapshots eligible leads
+into campaign_lead in waves of batch_size, then enqueues call.dial (trigger='campaign', campaignId) per lead with
+singleton keys, honoring schedule, dailyCap, maxConcurrent, and the policy-result behaviour in Design Decisions.
+The next wave starts only after the previous is dispatched. Pause/stop halt dispatch and cancel queued jobs. The
+campaign completes when all members are terminal. Start is idempotent. Verify (do not reimplement) that dial.ts
+plus the partial unique index give exactly one active call per lead.
+Acceptance: 250 eligible leads, batch_size 100 -> waves 100/100/50; none dialled twice; caps respected;
+OUTSIDE_WINDOW reschedules; WALLET_EMPTY pauses; crash/restart does not double-dial.
+
+PHASE 5 - Webhooks to jobs pipeline, classification
+- Webhook route: POST /api/webhooks/dograh/:key (HANDBOOK Appendix A); the key identifies the tenant so signature
+  verification is one indexed lookup plus timing-safe HMAC compare, no all-tenant scan. Keep the legacy
+  /api/webhooks/godrah URL working for already-dialled calls, or migrate it safely. Also keep the pre-call
+  inbound-context endpoint working.
+- The handler only: verify -> upsert dograh_run_raw -> insert webhook_event_processed (ON CONFLICT DO NOTHING; skip
+  on conflict) -> enqueue call.finalize -> return fast (<300 ms, no LLM, no downloads).
+- Jobs (registered in allJobs, retries with backoff): call.finalize (status, duration, disposition, transcript,
+  usage_event, stage moves per Phase 1), recording.archive (download -> R2 -> recording_key; remove the TODO),
+  analyst.run (talk >= 15s; classification, temperature observation with verbatim quotes, next_step, needs_counsellor
+  -> counsellor_queue_item, scenario). Short/unanswered calls classify from disposition: no_answer/busy/rejected
+  retry via the policy engine; invalid number -> suppression + invalid.
+- sync.ts uses the same processor: it determines which side effects are already applied and fills only the missing
+  ones, so out-of-order events (analysis before end) still produce each effect exactly once.
+Acceptance (chaos, HANDBOOK D7-I3-02): duplicate, out-of-order, concurrent, bad-signature, worker-kill between
+reserve and dial, provider down 5 min (jobs retry, nothing lost), R2 down (archive retries) -> exactly one
+call_attempt per lead and no lost or double side effects.
+
+PHASE 6 - Assignment, continuous flow, agent tools
+- Assignment service/job per Design Decisions on lead create and on needs_counsellor items, plus a periodic
+  sweep. Endpoints (HANDBOOK Appendix A): GET /queue?kind, POST /queue/:id/claim|resolve, POST
+  /reviews/:callId/verify|override; reassign for admin/head. In-app notification to the assignee. sla.check job
+  raises sla_breach items when next_step is overdue.
+- Continuous flow: callback_requested schedules a re-dial through the policy engine; counsellor outcomes move stage
+  manually (reason required); leads with no further action leave the active flow.
+- Agent tools: confirm /api/agent-tools/v1/* (12 tools, HMAC, 5-min skew, agent_tool_call log) exists. Implement
+  any missing tool the flow needs (at minimum get_lead_context, request_counsellor, schedule_callback,
+  book_campus_visit, log_call_outcome); list any other missing tool as a follow-up, not a blocker.
+Acceptance: concurrency test (many items, few counsellors) shows no double assignment and respects capacity; 10
+new leads split evenly across 2 allocated counsellors; callback fires exactly once; SLA job flags overdue items.
+
+PHASE 7 - Frontend, responsive on every device
+TanStack Start file-based routes under apps/web/src/routes (follow existing naming) plus nav entries with role
+gating: campaign list/create wizard/detail (live per-wave progress, pause/resume/stop, outcomes by scenario),
+counsellor workspace and queue, lead 360 additions (calls, signed-URL recordings, transcripts, scenario, stage
+and next_step history, typed reject reasons), agent form with workflow dropdown + UUID fallback. Polling stays
+(5s for running campaign, queue, active-call lead views). Update the in-app help.
+Responsive requirements: viewport meta set; layouts verified at 390, 768 and 1440 px; touch targets >= 44px; no
+horizontal page scroll (wide tables scroll inside their own container); readable contrast; loading/empty/error
+states on every new view. Playwright: role journeys (owner, head, counsellor) covering create campaign -> start
+(fake dialer) -> pnpm dev:webhook scenarios -> assignment -> counsellor claim, screenshots at 390 and 1440 plus a
+WebKit mobile project if the config allows.
+
+PHASE 8 - Real-time push (optional; only after Phases 0-7 and 9 are green)
+pg_notify payload (also in contracts): {"v":1,"event":"call.started|call.ended|call.analysis|campaign.updated|
+lead.stage_changed|queue.updated","tenantId":"...","campaignId":null|"...","callAttemptId":null|"...",
+"leadId":null|"...","at":"<iso>"}; no PII, under 8KB; published after commit. GET /api/events (SSE):
+session-auth, tenant-filtered, one shared LISTEN connection (direct Postgres connection, not a pooler) fanned out,
+25s heartbeat, Last-Event-ID, cleanup on request.raw 'close'. Web provider invalidates React Query keys; polling
+relaxes while connected and returns on disconnect (client backoff 1s doubling to 30s with jitter). Caddy must not
+buffer this route (flush_interval -1, no compression). Test: a simulated webhook updates an open campaign view in
+about 1s; no cross-tenant leakage; no leaked listeners.
+
+PHASE 9 - Deployment and any-device readiness (HANDBOOK §2, D1-I1-02/03, D2-I1-01, App. D)
+Produce everything needed to deploy and verify it locally:
+- Dockerfiles for api, worker, web: multi-stage, Node 22, pnpm/turbo prune, non-root user, HEALTHCHECK, no secrets
+  baked in. API exposes /health (liveness + DB check).
+- infra/docker-compose.yml: postgres:17 (own volume, internal network only, no published port), caddy (80/443,
+  persistent cert volume), crm-api:3001, crm-worker, crm-web:3000, and a one-shot migrate step (dbmate with
+  DATABASE_MIGRATION_URL) that gates api/worker start; restart: unless-stopped; healthchecks; depends_on with
+  health conditions. Separate compose project names and env files for staging and production; commit only
+  .env.*.example files.
+- infra/Caddyfile: staging and production hosts from env; /api/* and /v1/* -> crm-api:3001, everything else ->
+  crm-web:3000; automatic TLS; HSTS, X-Frame-Options, Referrer-Policy, CSP compatible with the app; the SSE route
+  unbuffered; on_demand_tls with ask -> /api/internal/domain-allowed if custom domains exist (that endpoint must not
+  be publicly reachable).
+- Same-origin and URL correctness (this is what makes it work on any device): web uses relative /api calls; Better
+  Auth baseURL and trustedOrigins derive from PUBLIC_BASE_URL; cookies Secure, HttpOnly, SameSite=Lax; CORS off;
+  provider webhook and callback URLs built from PUBLIC_BASE_URL; grep and remove hardcoded localhost URLs.
+- CI/CD on the repo's existing CI host (if none exists, write GitHub Actions and record the assumption): on merge
+  to main build images, push to a registry (GHCR), SSH-deploy staging (compose pull + up + dbmate migrate); production
+  is a manual workflow_dispatch with a tag; rollback = redeploy previous tag. Secrets only in CI/VPS env.
+  Include a gitleaks step.
+- Ops per HANDBOOK: nightly + WAL backup scripts to R2 and a restore script; Uptime Kuma + GlitchTip wiring
+  (GLITCHTIP_DSN) and the alert list from D7-I1-03 as config/docs where infrastructure-as-code is feasible.
+- scripts/smoke.sh <base_url>: /health, login page, /api/branding, security headers, HTTPS redirect, one SSE
+  handshake if Phase 8 is done.
+- docs/runbooks/deploy.md: first-time VPS setup (DNS A records for staging/app, firewall open only 22/80/443,
+  Docker install, env files, first up), update, rollback, restore, onboard a tenant, rotate secrets, and "calls not
+  going out" troubleshooting. Include a "use it on any device" checklist: open the HTTPS URL on a phone and a laptop,
+  log in, view campaigns, install-to-home-screen steps.
+- Optional (flag as an addition beyond the handbook): PWA manifest + icons with tenant branding so the app is
+  installable on phones; no offline caching of tenant data.
+- Verify locally: run the production compose with Caddy on localhost (internal TLS), run smoke.sh and the
+  Playwright suite (390/768/1440) against it.
+You cannot reach the real VPS, DNS or registry. Do not claim anything is deployed. Unless credentials are explicitly
+provided as env/CI secrets, stop at artifacts + runbook + local verification and list the manual steps.
+
+PHASE 10 - Final verification
+pnpm install && pnpm db:up && pnpm db:migrate && pnpm jobs:install && pnpm db:seed && pnpm test && pnpm typecheck
+&& pnpm lint && pnpm format:check && pnpm -C tests/e2e test, all green; cross-tenant suite includes every new
+endpoint; sweep UI strings, API errors, emails and logs for tenant-visible provider names; update .env.example,
+README, AGENTS.md; surface dead-letter jobs via /api/admin/jobs or an alert hook.
+
+TRUE BLOCKERS (the only reasons to stop and ask)
+A missing credential you cannot stub, a provider contract detail that can be neither verified nor kept local, or a
+requirement that directly conflicts with the NEVER list. Otherwise choose the safest option consistent with the
+Design Decisions, document it, and continue.
+
+FINAL REPORT
+1. Per phase: changes (files/migrations), tests, results. 2. Handbook-vs-repo conflicts and how resolved. 
+3. Everything not verifiable without real infrastructure, as a manual checklist: real provider key + webhook secret,
+   workflow ids, DNS + VPS first deploy, one real test call per scenario, recording archive, signature check, phone
+   and laptop smoke test. 4. Known limitations and follow-ups (including unimplemented agent tools). 4. to make sure the system should be properly connected with each and every API looking for it and also when I create or initiate campaigns from my CRM it should be reflect in my quadra system and the goal should be initiated via there only make sure these things should be must to be done this is the end goal what we have to achieve. 
+
+if you have any doubts and questions just ask me I will answer you everything in the details you can work on it properly and let me know how things are going.

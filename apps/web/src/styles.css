@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+/*
+ * Theme tokens (D1-I4-03). `--brand` is the ONE tenant colour; everything brand-coloured derives from it.
+ * BrandingProvider overrides it at runtime on <html>. Components use token classes only, never colour literals.
+ */
+:root {
+  --brand: oklch(0.52 0.2 264);
+  --radius: 0.625rem;
+
+  --background: oklch(0.985 0.002 264);
+  --foreground: oklch(0.2 0.02 264);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--foreground);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.004 264);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.96 0.004 264);
+  --muted-foreground: oklch(0.5 0.02 264);
+  --accent: color-mix(in oklab, var(--brand) 10%, var(--card));
+  --accent-foreground: color-mix(in oklab, var(--brand) 70%, var(--foreground));
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.8 0.15 80);
+  --warning-foreground: oklch(0.3 0.06 80);
+  /*
+   * Lead temperature: identity colours, not brand. Shared by badges and dashboard bars.
+   * hot/warm/cold validated as a categorical set (dataviz validate_palette.js, light surface: CVD ΔE 15.3,
+   * normal 20.8, all pairs). warm is < 3:1 on the surface, so it always ships with a text label.
+   * invalid / not rated are neutral "rest" buckets (gray by design).
+   */
+  --temp-hot: #e34948;
+  --temp-warm: #eda100;
+  --temp-cold: #2a78d6;
+  --temp-invalid: #52514e;
+  --temp-none: #c3c2b7;
+  --border: oklch(0.91 0.006 264);
+  --input: oklch(0.91 0.006 264);
+  --ring: color-mix(in oklab, var(--brand) 60%, transparent);
+
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-temp-hot: var(--temp-hot);
+  --color-temp-warm: var(--temp-warm);
+  --color-temp-cold: var(--temp-cold);
+  --color-temp-invalid: var(--temp-invalid);
+  --color-temp-none: var(--temp-none);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

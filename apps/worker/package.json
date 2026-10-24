@@ -1,0 +1,31 @@
+{
+  "name": "@vernacular/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@vernacular/api": "workspace:^",
+    "@vernacular/contracts": "workspace:*",
+    "@vernacular/db": "workspace:*",
+    "@vernacular/integration-dograh": "workspace:^",
+    "@vernacular/policy": "workspace:*",
+    "kysely": "^0.29.6",
+    "pg": "^8.13.1",
+    "pg-boss": "^12.37.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
