@@ -20,7 +20,7 @@ export const platformNotConfigured = () =>
   new AppError(
     503,
     "PLATFORM_NOT_CONFIGURED",
-    "The calling platform is not connected for your institution yet. Ask your platform administrator to connect it.",
+    "The calling platform is not connected for your institution yet. An owner or admin can connect it in Settings → Integrations.",
   );
 
 export function createPlatformResolver(deps: {

@@ -154,6 +154,7 @@ describe("every protected route is tenant-isolated", () => {
       .sort();
     // Add new write routes here ONLY after writing their own cross-tenant test.
     expect(writes).toEqual([
+      "DELETE /api/settings/calling-platform", // own tenant's secret only; isolation test in calling-platform.test.ts
       "DELETE /api/settings/holidays/:id",
       "PATCH /api/campaigns/:id", // covered by the campaign-routes isolation test above
       "PATCH /api/leads/:id",
@@ -173,6 +174,7 @@ describe("every protected route is tenant-isolated", () => {
       "POST /api/settings/sources",
       "POST /api/settings/sources/:id/rotate-token",
       "POST /api/settings/sources/:id/test-mapping",
+      "PUT /api/settings/calling-platform", // own tenant's secret only; isolation test in calling-platform.test.ts
       "PUT /api/settings/policy",
     ]);
   });

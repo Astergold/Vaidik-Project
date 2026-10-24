@@ -108,8 +108,19 @@ export function loadMasterKeys(
 }
 
 /** Validates env and fails fast with a readable message. Pass an env object in tests. */
+/**
+ * On Vercel the app is served same-origin from the deployment's own domain (web + api behind one router), so
+ * PUBLIC_BASE_URL defaults to it when not set. Production should still set PUBLIC_BASE_URL to the custom domain.
+ */
+function vercelBaseUrl(env: Record<string, string | undefined>): string | undefined {
+  if (env.PUBLIC_BASE_URL || !env.VERCEL) return undefined;
+  const host = env.VERCEL_ENV === "production" ? env.VERCEL_PROJECT_PRODUCTION_URL : env.VERCEL_URL;
+  return host ? `https://${host}` : undefined;
+}
+
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
-  const parsed = envSchema.safeParse(env);
+  const vercel = vercelBaseUrl(env);
+  const parsed = envSchema.safeParse(vercel ? { ...env, PUBLIC_BASE_URL: vercel } : env);
   if (!parsed.success) {
     const lines = parsed.error.issues.map(
       (i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`,

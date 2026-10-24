@@ -50,7 +50,8 @@ owner, admin, admission head (super-admin always). Counsellors get 403.
 
 - Call analysis (transcript, classification, counsellor queue) still comes from the existing webhook/analysis
   path; campaign sync only records call outcome, duration and the `connected` stage.
-- No UI yet to store a tenant's own platform key (`tenant_secret` kind `dograh_api_key`); dev/staging use the
-  global `DOGRAH_PLATFORM_KEY`. Production refuses the global key.
+- Each institution connects its own platform key in Settings → Integrations → Calling platform
+  (`GET/PUT/DELETE /api/settings/calling-platform`, owner/admin; validated against the platform before saving,
+  write-only, audited). Dev/staging may fall back to the global `DOGRAH_PLATFORM_KEY`; production refuses it.
 - Retries happen on the platform (its retry config), so a retry attempt is not re-checked by the CRM policy
   engine; the schedule sent always stays inside the tenant calling window.

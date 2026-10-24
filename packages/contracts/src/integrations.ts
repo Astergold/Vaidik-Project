@@ -133,3 +133,31 @@ export const deliveriesResponse = z.object({
   nextCursor: z.string().nullable(),
 });
 export type DeliveriesResponse = z.infer<typeof deliveriesResponse>;
+
+/**
+ * Calling platform connection (the voice platform that places AI calls and runs campaigns). Owner/admin.
+ *
+ *   GET    /api/settings/calling-platform   → callingPlatformStatus
+ *   PUT    /api/settings/calling-platform   putCallingPlatformBody → callingPlatformStatus (422 when the key is refused)
+ *   DELETE /api/settings/calling-platform   → callingPlatformStatus (disconnected)
+ *
+ * The key is write-only: it is checked against the platform before saving, stored encrypted, and only its last four
+ * characters are ever returned.
+ */
+export const callingPlatformStatus = z.object({
+  connected: z.boolean(),
+  keyLast4: z.string().nullable(),
+  updatedAt: isoDateTime.nullable(),
+  /** How many active workflows the key can see (null when not connected or the platform is unreachable). */
+  workflowCount: z.number().int().nullable(),
+});
+export type CallingPlatformStatus = z.infer<typeof callingPlatformStatus>;
+
+export const putCallingPlatformBody = z.object({
+  apiKey: z
+    .string()
+    .trim()
+    .min(10, "Paste the full API key")
+    .max(500, "That doesn't look like an API key"),
+});
+export type PutCallingPlatformBody = z.infer<typeof putCallingPlatformBody>;

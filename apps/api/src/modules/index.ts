@@ -7,6 +7,7 @@ import { policyRoutes } from "./policy/routes.js";
 import { notificationsRoutes } from "./notifications/routes.js";
 import { duplicatesRoutes } from "./duplicates/routes.js";
 import { campaignsRoutes } from "./campaigns/routes.js";
+import { callingPlatformRoutes } from "./calling-platform/routes.js";
 import { leadsImportsRoutes } from "./leads/imports/routes.js";
 
 /**
@@ -23,5 +24,6 @@ export const tenantModules: FastifyPluginAsyncZod[] = [
   notificationsRoutes,
   duplicatesRoutes,
   campaignsRoutes,
+  callingPlatformRoutes,
   leadsImportsRoutes,
 ];

@@ -7,6 +7,7 @@ import { loadConfig, type Config } from "../src/config.js";
 import { MemoryMailer } from "../src/lib/mailer.js";
 import { buildServer } from "../src/server.js";
 import type { PlatformResolver } from "../src/modules/campaigns/platform.js";
+import type { CallPlatform } from "@vernacular/integration-dograh";
 
 export const PASSWORD = "Test-Password-123!";
 
@@ -32,7 +33,10 @@ export interface TestEnv {
 
 export async function buildTestEnv(
   overrides: Record<string, string | undefined> = {},
-  extra: { platform?: PlatformResolver } = {},
+  extra: {
+    platform?: PlatformResolver;
+    platformForKey?: (apiKey: string) => Pick<CallPlatform, "listWorkflows">;
+  } = {},
 ): Promise<TestEnv> {
   const config = testConfig(overrides);
   const db = createDb(config.databaseUrl, { max: 6 });
@@ -45,6 +49,7 @@ export async function buildTestEnv(
     mailer,
     auth: createAuth({ config, mailer, pool }),
     ...(extra.platform ? { platform: extra.platform } : {}),
+    ...(extra.platformForKey ? { platformForKey: extra.platformForKey } : {}),
   });
   await app.ready();
   return {

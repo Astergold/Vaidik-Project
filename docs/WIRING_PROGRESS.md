@@ -37,3 +37,7 @@
   call_attempt_id in initial_context and checks the workflow's newest 50 runs for it before placing a call.
   call_attempt.dograh_run_id = "<workflowId>:<runId>". call.sync_runs is armed by call.dial and re-arms while calls are in
   flight; calls with no result after 2 h close as NO_RESULT. Worker uses the real dialer; DIAL_MODE=fake refused in production.
+- DONE same day: per-tenant calling-platform key. Settings → Integrations → Calling platform
+  (apps/web/src/features/integrations/CallingPlatformSection.tsx) ↔ `GET/PUT/DELETE /api/settings/calling-platform`
+  (apps/api/src/modules/calling-platform/routes.ts). Owner/admin only; key validated with a read-only workflow list
+  before saving, stored in tenant_secret (AES-GCM), only last 4 chars returned, audit rows carry no key.

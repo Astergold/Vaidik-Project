@@ -140,7 +140,7 @@ describe("Integrations page layout (D5-I4-03)", () => {
       [...container.querySelectorAll("section > div h2[id], section > h2[id]")].map(
         (h) => h.textContent,
       ),
-    ).toEqual(["API keys", "Webhooks", "Other connections"]);
+    ).toEqual(["Calling platform", "API keys", "Webhooks", "Other connections"]);
     expect(document.body.innerHTML.toLowerCase()).not.toContain(["dog", "rah"].join(""));
     expectSmallScreenSafe(container);
   });

@@ -2,6 +2,8 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   apiKey,
   apiKeysResponse,
+  callingPlatformStatus,
+  putCallingPlatformBody,
   createApiKeyBody,
   createApiKeyResponse,
   createWebhookBody,
@@ -17,7 +19,7 @@ import {
   type Webhook,
 } from "@vernacular/contracts";
 import type { z } from "zod";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 import { SEAM_META } from "@/lib/seam";
 
 /**
@@ -149,5 +151,50 @@ export function useReplayDelivery(webhookId: string) {
       ),
     meta: SEAM_META,
     onSuccess: () => void qc.invalidateQueries({ queryKey: integrationKeys.deliveries(webhookId) }),
+  });
+}
+
+/* ---- calling platform ---- */
+
+export const callingPlatformKey = ["settings", "calling-platform"] as const;
+
+export const useCallingPlatform = () =>
+  useQuery({
+    queryKey: callingPlatformKey,
+    queryFn: () => apiGet("/api/settings/calling-platform", callingPlatformStatus),
+    retry: false,
+    meta: SEAM_META,
+  });
+
+/** The key goes to the server once and is never kept in the cache: only the returned status is. */
+export function useConnectCallingPlatform() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (apiKey: string) =>
+      apiPut(
+        "/api/settings/calling-platform",
+        putCallingPlatformBody.parse({ apiKey }),
+        callingPlatformStatus,
+      ),
+    meta: SEAM_META,
+    onSuccess: (s) => {
+      qc.setQueryData(callingPlatformKey, s);
+      void qc.invalidateQueries({ queryKey: ["campaigns", "platform-options"] });
+    },
+  });
+}
+
+export function useDisconnectCallingPlatform() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await apiDelete("/api/settings/calling-platform");
+      return apiGet("/api/settings/calling-platform", callingPlatformStatus);
+    },
+    meta: SEAM_META,
+    onSuccess: (s) => {
+      qc.setQueryData(callingPlatformKey, s);
+      void qc.invalidateQueries({ queryKey: ["campaigns", "platform-options"] });
+    },
   });
 }

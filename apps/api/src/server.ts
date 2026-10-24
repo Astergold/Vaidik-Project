@@ -15,6 +15,7 @@ import { createAuth, createAuthPool, type Auth } from "./auth/auth.js";
 import { createJobQueue, type JobQueue } from "./jobs/queue.js";
 import { createSecretsService, type SecretsService } from "./modules/secrets/service.js";
 import { createPlatformResolver, type PlatformResolver } from "./modules/campaigns/platform.js";
+import { PlatformClient, type CallPlatform } from "@vernacular/integration-dograh";
 import type { Config } from "./config.js";
 import { forbidden } from "./errors.js";
 import { ConsoleMailer, type Mailer } from "./lib/mailer.js";
@@ -45,6 +46,8 @@ export interface BuildOptions {
   secrets?: SecretsService;
   /** Calling-platform client per tenant. Tests inject an in-memory fake. */
   platform?: PlatformResolver;
+  /** Builds a platform client for a candidate key (key validation). Tests inject a fake. */
+  platformForKey?: (apiKey: string) => Pick<CallPlatform, "listWorkflows">;
 }
 
 export async function buildServer(opts: BuildOptions): Promise<FastifyInstance> {
@@ -108,6 +111,11 @@ export async function buildServer(opts: BuildOptions): Promise<FastifyInstance> 
         baseUrl: config.godrahBaseUrl,
         globalApiKey: config.godrahGlobalApiKey,
       }),
+  );
+  app.decorate(
+    "platformForKey",
+    opts.platformForKey ??
+      ((apiKey: string) => new PlatformClient({ baseUrl: config.godrahBaseUrl, apiKey })),
   );
   for (const name of config.deprecatedEnv)
     app.log.warn(`${name} is deprecated; use the DOGRAH_* name (see .env.example)`);

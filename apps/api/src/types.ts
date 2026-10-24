@@ -7,6 +7,7 @@ import type { Mailer } from "./lib/mailer.js";
 import type { RouteInfo } from "./server.js";
 import type { SecretsService } from "./modules/secrets/service.js";
 import type { PlatformResolver } from "./modules/campaigns/platform.js";
+import type { CallPlatform } from "@vernacular/integration-dograh";
 
 /** Who is calling, resolved from the session cookie. Present on every tenant-scoped route. */
 export interface AuthContext {
@@ -33,6 +34,8 @@ declare module "fastify" {
     secrets: SecretsService;
     /** Calling-platform client for a tenant (campaign mirroring). */
     platform: PlatformResolver;
+    /** Platform client for a candidate API key (validation before saving it). */
+    platformForKey: (apiKey: string) => Pick<CallPlatform, "listWorkflows">;
     /** Every registered route (method/url/public). For the route-registry test. */
     routes: RouteInfo[];
   }
